@@ -1,0 +1,257 @@
+<workflow-app name="WF__Initial_Load_???MODULENAME???" xmlns="uri:oozie:workflow:0.5">
+    <credentials>
+        <credential name='kinit' type='hive2'>
+            <property>
+                <name>hive2.server.principal</name>
+                <value>${hive2_server_principal}</value>
+            </property>
+            <property>
+                <name>hive2.jdbc.url</name>
+                <value>${hive2_jdbc_url}</value>
+            </property>
+        </credential>
+    </credentials>
+
+    <start to="Step_1___Prepare_Hive_Databases_Tables"/>
+
+    <action name="Step_1___Prepare_Hive_Databases_Tables" cred="kinit">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+            <job-xml>${oozie_lib_path}/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>oozie.action.sharelib.for.hive</name>
+                    <value>hive,hcatalog</value>
+                </property>
+            </configuration>
+            <script>scripts/prepare-hive.hql</script>
+            <param>database_meta=${hive_database_4_metadata}</param>
+            <param>table_meta=${hive_table_4_metadata}</param>
+            <param>database_data=${hive_database_4_data}</param>
+            <param>database_tmp_data=${hive_tmp_database_4_data}</param>
+            <param>database_summary=${database_summary}</param>
+            <param>table_summary=${table_summary}</param>
+          </hive>
+
+        <ok to="Step_2___Import_Metadata_2_Hive"/>
+        <error to="Kill"/>
+    </action>
+
+    <action name="Step_2___Import_Metadata_2_Hive" cred="kinit">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.4">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+
+            <configuration>
+                <property>
+                    <name>oozie.action.sharelib.for.sqoop</name>
+                    <value>sqoop,hive,hcatalog</value>
+                </property>
+                <property>
+                    <name>HADOOP_USER_NAME</name>
+                    <value>${service_user}</value>
+                </property>
+            </configuration>
+
+            <arg>import</arg>
+            <arg>${sqoop_connection_credentials}</arg>
+            <arg>--connect</arg>
+            <arg>${sqoop_connection_url}</arg>
+            <arg>--username</arg>
+            <arg>${sqoop_connection_username}</arg>
+            <arg>--password-alias</arg>
+            <arg>${sqoop_connection_password}</arg>
+            <arg>--query</arg>
+            <arg>${step_1_sqoop_query}</arg>
+
+             <arg>--target-dir</arg>
+             <arg>${target_dir_meta}</arg>
+             <arg>--delete-target-dir</arg>
+             <arg>--hive-import</arg>
+             <arg>--create-hive-table</arg>
+             <arg>--hive-database</arg>
+             <arg>${hive_database_4_metadata}</arg>
+             <arg>--hive-table</arg>
+             <arg>${hive_table_4_metadata}</arg>
+
+            <arg>-m1</arg>
+            <arg>--verbose</arg>
+            <archive>${oozie_lib_path}/ojdbc8.jar#ojdbc8.jar</archive>
+            <archive>${oozie_lib_path}/hive-site.xml#hive-site.xml</archive>
+        </sqoop>
+
+        <ok to="Step_3___create_hive_tables"/>
+        <error to="Kill"/>
+    </action>
+
+    <action name="Step_3___create_hive_tables" cred='kinit'>
+        <shell xmlns="uri:oozie:shell-action:0.2">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>default</value>
+                </property>
+            </configuration>
+            <exec>create-hive-tables.sh</exec>
+			<argument>${hive2_jdbc_url}</argument>
+            <argument>${hive_table_names}</argument>
+            <argument>${hive_database_4_metadata}</argument>
+            <argument>${hive_table_4_metadata}</argument>
+            <argument>${hive_tmp_database_4_data}</argument>
+            <argument>${oozie_wf_path}</argument>
+            <file>scripts/create-hive-tables.sh#create-hive-tables.sh</file>
+            <capture-output/>
+        </shell>
+        <ok to="Step_4___Fetch_SCN_Number_from_Oracle"/>
+        <error to="Kill"/>
+</action>
+
+    <action name="Step_4___Fetch_SCN_Number_from_Oracle" cred="kinit">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.4">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+
+            <configuration>
+                <property>
+                    <name>oozie.action.sharelib.for.sqoop</name>
+                    <value>sqoop,hive,hcatalog</value>
+                </property>
+                <property>
+                    <name>HADOOP_USER_NAME</name>
+                    <value>${service_user}</value>
+                </property>
+            </configuration>
+
+            <arg>import</arg>
+            <arg>${sqoop_connection_credentials}</arg>
+            <arg>--connect</arg>
+            <arg>${sqoop_connection_url}</arg>
+            <arg>--username</arg>
+            <arg>${sqoop_connection_username}</arg>
+            <arg>--password-alias</arg>
+            <arg>${sqoop_connection_password}</arg>
+            <arg>--query</arg>
+            <arg>${step_3_sqoop_query}</arg>
+
+            <arg>--target-dir</arg>
+            <arg>${step_3_scn_hdfs_dir}</arg>
+            <arg>--delete-target-dir</arg>
+
+            <arg>-m1</arg>
+            <arg>--verbose</arg>
+            <archive>${oozie_lib_path}/ojdbc8.jar#ojdbc8.jar</archive>
+            <archive>${oozie_lib_path}/hive-site.xml#hive-site.xml</archive>
+        </sqoop>
+
+        <ok to="Step_5___Get_SCN_NUMBER"/>
+        <error to="Kill"/>
+    </action>
+
+    <action name="Step_5___Get_SCN_NUMBER" cred="kinit">
+        <shell xmlns="uri:oozie:shell-action:0.1">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+            <exec>scn.sh</exec>
+            <argument>${step_3_scn_hdfs_dir}</argument>
+            <file>scripts/scn.sh#scn.sh</file>
+            <capture-output/>
+        </shell>
+
+        <ok to="Step_6___Generate_Queries_for_Sqoop"/>
+        <error to="Kill"/>
+    </action>
+
+    <action name="Step_6___Generate_Queries_for_Sqoop">
+        <java>
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+            <main-class>com.daimler.mbb.ebip.dp.metadata.Main</main-class>
+            <java-opts>-Dgeneral.properties=general.properties -Dinitialload-oracle-pipeline.properties=${step_5_property_file}</java-opts>
+            <archive>${step_5_libs_path}/edip_dp__initialload.jar#edip_dp__initialload.jar</archive>
+            <archive>${step_5_libs_path}/core-site-app.xml#core-site-app.xml</archive>
+            <archive>${step_5_libs_path}/kerberos.keytab#kerberos.keytab</archive>
+            <archive>${step_5_libs_path}/general.properties#general.properties</archive>
+            <archive>${step_5_libs_path}/${step_5_property_file}#${step_5_property_file}</archive>
+            <archive>${step_5_libs_path}/${step_5_common_properties_file}#${step_5_common_properties_file}</archive>
+        </java>
+
+        <ok to="Step_7___Get_Queries_for_Sqoop"/>
+        <error to="Kill"/>
+    </action>
+
+    <action name="Step_7___Get_Queries_for_Sqoop" cred="kinit">
+        <shell xmlns="uri:oozie:shell-action:0.1">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+            <exec>get-queries.sh</exec>
+            <argument>${step_5_sqoop_query_hdfs_dir}</argument>
+            <file>scripts/get-queries.sh#get-queries.sh</file>
+            <capture-output/>
+        </shell>
+
+        <ok to="???FIRSTACTION???"/>
+        <error to="Kill"/>
+    </action>
+
+    <!-- PLACEHOLDER-FORK -->
+
+    <!-- Queries below are Auto-Generated -->
+
+    <!-- PLACEHOLDER -->
+
+    <!-- PLACEHOLDER-JOIN -->
+
+     <action name="Step_8___Hive_Text_To_ORC" cred="kinit">
+         <hive xmlns="uri:oozie:hive-action:0.2">
+             <job-tracker>${job_tracker}</job-tracker>
+             <name-node>${name_node}</name-node>
+             <job-xml>${oozie_lib_path}/hive-site.xml</job-xml>
+             <configuration>
+                 <property>
+                     <name>oozie.action.sharelib.for.hive</name>
+                     <value>hive,hcatalog</value>
+                 </property>
+             </configuration>
+             <script>scripts/hive-text-to-orc.hql</script>
+             <param>database_data=${hive_database_4_data}</param>
+             <param>database_tmp_data=${hive_tmp_database_4_data}</param>
+             <param>database_meta=${hive_database_4_metadata}</param>
+             <param>table_meta=${hive_table_4_metadata}</param>
+
+         </hive>
+
+         <ok to="Step_9___Hive_To_match_Count"/>
+         <error to="Step_9___Hive_To_match_Count"/>
+     </action>
+    <action name="Step_9___Hive_To_match_Count" cred="kinit">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+            <job-xml>${oozie_lib_path}/hive-site.xml</job-xml>
+            <configuration>
+                <property>
+                    <name>oozie.action.sharelib.for.hive</name>
+                    <value>hive,hcatalog</value>
+                </property>
+            </configuration>
+            <script>scripts/hive-insert-count.hql</script>
+            <param>database_summary=${database_summary}</param>
+            <param>table_summary_tmp=${table_summary_tmp}</param>
+            <param>table_summary=${table_summary}</param>
+            <param>database_data=${hive_database_4_data}</param>
+            <param>module_name=${module_name}</param>
+        </hive>
+        <ok to="End"/>
+        <error to="Kill"/>
+    </action>
+
+
+    <kill name="Kill">
+        <message>"Killed job due to error: ${wf:errorMessage(wf:lastErrorNode())}"</message>
+    </kill>
+
+    <end name="End"/>
+</workflow-app>

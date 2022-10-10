@@ -1,0 +1,105 @@
+    <action name="Step_X___Load_Table__???TABLENAME???" cred="kinit">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.4">
+            <job-tracker>${job_tracker}</job-tracker>
+            <name-node>${name_node}</name-node>
+
+            <configuration>
+                <property>
+                    <name>oozie.action.sharelib.for.sqoop</name>
+                    <value>sqoop,hive,hcatalog</value>
+                </property>
+                <property>
+                    <name>HADOOP_USER_NAME</name>
+                    <value>${service_user}</value>
+                </property>
+            </configuration>
+
+            <arg>import</arg>
+            <arg>${sqoop_connection_credentials}</arg>
+
+            <arg>--connect</arg>
+            <arg>${sqoop_connection_url}</arg>
+
+            <arg>--username</arg>
+            <arg>${sqoop_connection_username}</arg>
+
+            <arg>--password-alias</arg>
+            <arg>${sqoop_connection_password}</arg>
+
+            <arg>--query</arg>
+            <arg>${wf:actionData('Step_7___Get_Queries_for_Sqoop')['query_???TABLENAME???']}???WHERE???</arg>
+
+            <arg>--target-dir</arg>
+            <arg>${target_dir_data}/???TABLENAME???</arg>
+            <arg>--delete-target-dir</arg>
+
+            <arg>--hive-import</arg>
+            <arg>--hive-database</arg>
+            <arg>${hive_tmp_database_4_data}</arg>
+            <arg>--hive-table</arg>
+            <arg>???TABLENAME???</arg> 
+
+            <arg>-m1</arg>
+            <arg>--verbose</arg>
+            <arg>--null-string</arg>
+            <arg>null</arg>
+            <arg>--null-non-string</arg>
+            <arg>null</arg>
+            <arg>--hive-drop-import-delims</arg>
+
+            <archive>${oozie_lib_path}/ojdbc8.jar#ojdbc8.jar</archive>
+            <archive>${oozie_lib_path}/hive-site.xml#hive-site.xml</archive>
+        </sqoop>
+        <ok to="Step_X___Count_Table__???TABLENAME???"/>
+        <error to="Step_X___Count_Table__???TABLENAME???"/>
+    </action>
+
+    <action name="Step_X___Count_Table__???TABLENAME???" cred="kinit">
+    <sqoop xmlns="uri:oozie:sqoop-action:0.4">
+        <job-tracker>${job_tracker}</job-tracker>
+        <name-node>${name_node}</name-node>
+
+        <configuration>
+            <property>
+                <name>oozie.action.sharelib.for.sqoop</name>
+                <value>sqoop,hive,hcatalog</value>
+            </property>
+            <property>
+                <name>HADOOP_USER_NAME</name>
+                <value>${service_user}</value>
+            </property>
+        </configuration>
+
+        <arg>import</arg>
+        <arg>${sqoop_connection_credentials}</arg>
+
+        <arg>--connect</arg>
+        <arg>${sqoop_connection_url}</arg>
+
+        <arg>--username</arg>
+        <arg>${sqoop_connection_username}</arg>
+
+        <arg>--password-alias</arg>
+        <arg>${sqoop_connection_password}</arg>
+
+        <arg>--query</arg>
+        <arg>select '???TABLENAME???' as table_name, count(1) as source_count, 0 as target_count from ${sqoop_schema}.???TABLENAME???  AS OF SCN ${wf:actionData('Step_5___Get_SCN_NUMBER')['scn']} t WHERE $CONDITIONS</arg>
+        <arg>--target-dir</arg>
+        <arg>${target_dir_data}/???TABLENAME???</arg>
+        <arg>--delete-target-dir</arg>
+
+        <arg>--hive-import</arg>
+        <arg>--hive-database</arg>
+        <arg>${database_summary}</arg>
+        <arg>--hive-table</arg>
+        <arg>${table_summary}</arg>
+
+        <arg>-m1</arg>
+        <arg>--verbose</arg>
+
+        <archive>${oozie_lib_path}/ojdbc8.jar#ojdbc8.jar</archive>
+        <archive>${oozie_lib_path}/hive-site.xml#hive-site.xml</archive>
+    </sqoop>
+    <ok to="???NEXTACTION???"/>
+    <error to="???NEXTACTION???"/>
+    </action>
